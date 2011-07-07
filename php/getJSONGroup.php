@@ -9,6 +9,8 @@
 	
 	sort($groups);
 	$groups = array_merge(Array("All"),$groups);
+
+	
 	
 	echo json_encode($groups);
 ?>

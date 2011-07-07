@@ -6,15 +6,19 @@
 {
 	if(self = [super init])
 	{
-		objs = [];
+		//objs = [@"test", @"test2"];
+        objs = [];
 		[self getGroups];
+
+        console.log(objs);
 	}
 	return self;
 }
 - (void)getGroups
 {
 	var request = [CPURLRequest requestWithURL:requestGroupURL];
-	[[CPURLConnection alloc] initWithRequest:request delegate:self];
+//	console.log(requestGroupURL);
+    [[CPURLConnection alloc] initWithRequest:request delegate:self];
 }
 - (void)connection:(CPURLConnection)aConnection didReceiveData:(CPString)data
 {

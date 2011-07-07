@@ -1,6 +1,6 @@
 /*
  * AppController.j
- * ChartPlotter
+ * Content Tool
  *
  * Created by ofosho on November 10, 2010.
  * Copyright 2010, OTech Engineering Inc All rights reserved.
@@ -9,47 +9,32 @@
 @import <Foundation/CPObject.j>
 @import <AppKit/CPView.j>
 @import "FilterBar.j"
-@import "ListDataSource.j"
+@import "WordDataSource.j"
 @import "GroupDataSource.j"
 @import "globals.j"
+@import "ToolbarDelegate.j"
+@import "WordsController.j"
+@import "WordListView.j"
+@import "WordItemView.j"
+@import "Word.j"
 
-//CPWebView with style change to ScrollAppKit
-//and setRepresentedObject method for collectionview
-@implementation DetailsWebView : CPWebView
-- (void)_loadMainFrameURL
-{
-	[self _startedLoading];
-	
-	//[self setScrollMode:CPWebViewScrollAppKit]; 
-	_iframe.setAttribute("scrolling", "no");
 
-	_ignoreLoadStart = YES;
-	_ignoreLoadEnd = NO;
-
-	_url = _mainFrameURL;
-	_html = null;
-
-	[self _load];
-}
-- (void)setRepresentedObject:(id)anObject
-{
-	[self setMainFrameURL:anObject];
-}
 @end
+
 @implementation AppController : CPObject
 {
 	CPSplitView verticalSplitter;
-	CPSplitView horizontalSplitter;
 	CPView scrollParentView;
 	CPView leftView;
 	CPView rightView;
 	CPSearchField searchField;
-	DetailsWebView webView;
 	CPTableView tableView;
 	CPTableView groupView;
 	CPScrollView scrollView;
 	CPScrollView groupScrollView;
-	ListDataSource listDS;
+	CPToolbar toolbar;
+	WordsController wordsController;
+	WordDataSource wordDS;
 	GroupDataSource groupDS;
 	JSObject headerColor;
 	FilterBar   filterBar;
@@ -59,23 +44,31 @@
 	var theWindow = [[CPWindow alloc] initWithContentRect:CGRectMakeZero() styleMask:CPBorderlessBridgeWindowMask],
 		contentView = [theWindow contentView];
 
-	listDS = [[ListDataSource alloc] init];
+	wordDS = [[WordDataSource alloc] init];
 	groupDS = [[GroupDataSource alloc] init];
-	headerColor = [CPColor colorWithPatternImage:[[CPImage alloc] initWithContentsOfFile:[[CPBundle mainBundle] pathForResource:@"button-bezel-center.png"]]]; 
+	wordsController = [[WordsController alloc] init];
+
+	toolbar = [[CPToolbar alloc] initWithIdentifier:"Words"];
+	var toolbarDelegate = [[ToolbarDelegate alloc] init];
+	[toolbarDelegate setWordsController:wordsController];
+	[toolbar setDelegate:toolbarDelegate];
+	[toolbar setVisible:YES];
+	[theWindow setToolbar:toolbar];
+
 
 	[self initNotifications];	
 	[self createSearchField];
 	[self splitPage:[contentView bounds]];
 	[self createGroupView];
 	[self createListView];
-	[self createWebView];
 
 	[self combineViews];
 	
 	// add vertical splitter (entire page) to contentview
 	[contentView addSubview:verticalSplitter];
 
-	[self createMenu];
+	[CPMenu setMenuBarVisible: YES]
+	//[self createMenu];
 	[theWindow orderFront:self];
 }
 - (void)initNotifications
@@ -110,97 +103,34 @@
                    name:hideFilterBarNoti
                  object:nil];
 }
-- (@action)openDetailInNewWindow:(id)sender
-{
-	var newWindow = [[CPWindow alloc] initWithContentRect:CGRectMake(100, 100, 800, 600) styleMask:CPTitledWindowMask|CPClosableWindowMask|CPMiniaturizableWindowMask|CPResizableWindowMask];
-	[newWindow setMinSize:CGSizeMake(300, 300)];
 
-	var platformWindow = [[CPPlatformWindow alloc] initWithContentRect:CGRectMake(100, 100, 800, 600)];
-	[newWindow setPlatformWindow:platformWindow];
-	[newWindow setFullBridge:YES];
 
-	var contentView = [newWindow contentView],
-		webViewWin = [[DetailsWebView alloc] initWithFrame:[contentView bounds]];
-
-	[webViewWin setAutoresizingMask:CPViewWidthSizable|CPViewHeightSizable];
-	[contentView addSubview:webViewWin];
-
-	[newWindow orderFront:self];
-	[newWindow setDelegate:webViewWin];
-	
-	var i = [[tableView selectedRowIndexes] firstIndex];
-	var row = [[listDS objsToDisplay] objectAtIndex:i];
-	[webViewWin setMainFrameURL:@"php/tradeReport.php?group="+[row objectForKey:groupColHeaderName]+"&file="+[row objectForKey:"Name"]];
-}
-- (@action)openDetailsInNewWindow:(id)sender
-{
-	var platformWindow = [[CPPlatformWindow alloc] initWithContentRect:CGRectMake(0, 0, 600, 800)];
-	var newWindow = [[CPWindow alloc] initWithContentRect:CGRectMakeZero() styleMask:CPBorderlessBridgeWindowMask];
-	[newWindow setPlatformWindow:platformWindow];
-	[newWindow setFullBridge:YES];
-	[newWindow orderFront:self];
-	var contentView = [newWindow contentView],
-		bounds = [contentView bounds];
-	
-	var detsView = [[CPCollectionView alloc] initWithFrame:bounds];       
-	[detsView setAutoresizingMask:CPViewWidthSizable];
-	[detsView setMinItemSize:CGSizeMake(collViewWidth, collViewHeight)];
-	[detsView setMaxItemSize:CGSizeMake(collViewWidth, collViewHeight)];
-	
-	var itemPrototype = [[CPCollectionViewItem alloc] init],
-            detView = [[DetailsWebView alloc] initWithFrame:CGRectMakeZero()];
-        
-    [itemPrototype setView:detView];       
-    [detsView setItemPrototype:itemPrototype];
-	
-	var scrollViewDetails = [[CPScrollView alloc] initWithFrame:bounds];       
-	[scrollViewDetails setDocumentView:detsView];
-	[scrollViewDetails setAutoresizingMask:CPViewWidthSizable | CPViewHeightSizable];
-	[scrollViewDetails setAutohidesScrollers:YES];
-	[contentView addSubview:scrollViewDetails];
-
-	var urls = [];
-	if([sender title] == showAll){
-		for(var i=0;i < [[listDS objsToDisplay] count];i++){
-			var row = [[listDS objsToDisplay] objectAtIndex:i];		
-			urls[i] = @"php/tradeReport.php?group="+[row objectForKey:groupColHeaderName]+"&file="+[row objectForKey:"Name"];
-		}
-	}
-	else{
-		var indices = [tableView selectedRowIndexes];
-		var index = [indices firstIndex];
-		for(var i=0;i < [indices count];i++){			
-			var row = [[listDS objsToDisplay] objectAtIndex:index];		
-			urls[i] = @"php/tradeReport.php?group="+[row objectForKey:groupColHeaderName]+"&file="+[row objectForKey:"Name"];		
-			index = [indices indexGreaterThanIndex:index];
-		}
-	}
-	[detsView setContent:urls];
-}
 - (void)tableViewSelectionDidChange:(CPNotification)aNotification
 {
 	if(groupView === [aNotification object]){
 		var i = [[[aNotification object] selectedRowIndexes] firstIndex];
-		[listDS getList:[[groupDS objs] objectAtIndex:i]];
+		[wordsController getWord:[[groupDS objs] objectAtIndex:i]];
 		[searchField setStringValue:@""];
 		[self hideFilterBar:nil];
 	}
 	else{
 		var i = [[[aNotification object] selectedRowIndexes] firstIndex];
 		if(i > -1){
-			var row = [[listDS objsToDisplay] objectAtIndex:i];
-			[webView setMainFrameURL:@"php/tradeReport.php?group="+[row objectForKey:groupColHeaderName]+"&file="+[row objectForKey:"Name"]];
+			var row = [[wordsController objsToDisplay] objectAtIndex:i];
 		}
 	}
 }
+
 - (void)reloadTable:(CPNotification)aNotification
 {	
     [tableView reloadData];	
 }
+
 - (void)reloadGroups:(CPNotification)aNotification
 {	
     [groupView reloadData];	
 }
+
 - (void)hideFilterBar:(CPNotification)aNotification
 {
     if (![filterBar superview])
@@ -228,10 +158,11 @@
 	
     [scrollView setFrame:frame];
 }
+
 - (void)addColumns:(CPNotification)aNotification
 {
-	for(var i=0;i < [[listDS columnHeaders] count];i++){
-		var headerKey = [[listDS columnHeaders] objectAtIndex:i];
+	for(var i=0;i < [[wordsController columnHeaders] count];i++){
+		var headerKey = [[wordsController columnHeaders] objectAtIndex:i];
 		var desc = [CPSortDescriptor sortDescriptorWithKey:headerKey ascending:NO];
 		var column = [[CPTableColumn alloc] initWithIdentifier:headerKey];
 		[[column headerView] setStringValue:headerKey];
@@ -246,6 +177,7 @@
 	[tableView reloadData]; 
 	[self createFilterBar];
 }
+
 - (void)createMenu
 {
     [CPMenu setMenuBarVisible:YES];
@@ -261,6 +193,7 @@
 	[theMenu removeItemAtIndex:[theMenu indexOfItemWithTitle: @"Open"]];
 	[theMenu removeItemAtIndex:[theMenu indexOfItemWithTitle: @"Save"]];
 }
+
 - (void)createGroupView
 {
 	groupScrollView = [[CPScrollView alloc] initWithFrame:CGRectMake(0, 50, CGRectGetWidth([leftView bounds]), CGRectGetHeight([leftView bounds])-50)];
@@ -276,6 +209,8 @@
 	[groupView setAllowsEmptySelection:NO];
 	[groupView setBackgroundColor:[CPColor colorWithHexString:@"EBF3F5"]];
 
+
+
     var column = [[CPTableColumn alloc] initWithIdentifier:groupColId];
     [column setWidth:220.0];
     [column setMinWidth:50.0];
@@ -288,27 +223,35 @@
 }
 - (void)createListView
 {
+
+	
 	//create view to hold scrollView and filterBar
 	scrollParentView = [[CPView alloc] initWithFrame:CGRectMake(0.0, 0, CGRectGetWidth([horizontalSplitter bounds]), 300.0)];
-    // create a CPScrollView that will contain the CPTableView
-    scrollView = [[CPScrollView alloc] initWithFrame:CGRectMake(0.0, 0, CGRectGetWidth([horizontalSplitter bounds]), 300.0)];
-    [scrollView setAutoresizingMask:CPViewWidthSizable | CPViewHeightSizable]; 
-    // create the CPTableView
-    tableView = [[CPTableView alloc] initWithFrame:[scrollView bounds]];
-    [tableView setDataSource:listDS];
+    	// create a CPScrollView that will contain the CPTableView
+    	scrollView = [[CPScrollView alloc] initWithFrame:CGRectMake(0.0, 0, CGRectGetWidth([horizontalSplitter bounds]), 300.0)];
+    	[scrollView setAutoresizingMask:CPViewWidthSizable | CPViewHeightSizable]; 
+
+	//wordDS = [[WordDataSource alloc] init];
+	//wordController = [[WordsController alloc] init];
+
+
+    	// create the CPTableView
+    	tableView = [[CPTableView alloc] initWithFrame:[scrollView bounds]];
+        [tableView setDataSource:wordsController];
+	//[wordsController getWord:@""];
 	[tableView setAllowsEmptySelection:NO];
-    [tableView setUsesAlternatingRowBackgroundColors:YES];
-    [[tableView cornerView] setBackgroundColor:headerColor];
+    	[tableView setUsesAlternatingRowBackgroundColors:YES];
+    	[[tableView cornerView] setBackgroundColor:headerColor];
 	[tableView setAllowsMultipleSelection:YES];
-	[tableView setDelegate:self];
+	[tableView setDelegate:wordsController];
 	[tableView setTarget:self];
-    [tableView setDoubleAction:@selector(openDetailInNewWindow:)];
+    	[tableView setDoubleAction:@selector(openDetailInNewWindow:)];
 }
-- (void)createWebView
+/*- (void)createWebView
 {
 	webView = [[DetailsWebView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth([horizontalSplitter bounds])-16, CGRectGetHeight([horizontalSplitter bounds])-300)];
 	[webView setAutoresizingMask: CPViewWidthSizable | CPViewMinYMargin | CPViewMaxYMargin];
-}
+}*/
 - (void)createSearchField
 {
     searchField = [[CPSearchField alloc] initWithFrame:CGRectMake(0, 10, 200, 30)];
@@ -317,15 +260,15 @@
 	[searchField setBordered:YES];
 	[searchField setBezeled:YES];
 	[searchField setFont:[CPFont systemFontOfSize:12.0]];
-	[searchField setTarget:listDS];
+	[searchField setTarget:wordDS];
 	[searchField setAction:@selector(searchChanged:)];
 	[searchField setSendsWholeSearchString:NO]; 
 }
 - (void)createFilterBar
 {
-	filterBar = [[FilterBar alloc] initWithFrame:CGRectMake(0, 0, 400, 32) colHeaders:[listDS columnHeaders]];
+	filterBar = [[FilterBar alloc] initWithFrame:CGRectMake(0, 0, 400, 32) colHeaders:[wordDS columnHeaders]];
     [filterBar setAutoresizingMask:CPViewWidthSizable];
-    [filterBar setDelegate:listDS];
+    [filterBar setDelegate:wordDS];
 }
 - (void)splitPage:(CGRect)aBounds
 {
@@ -351,13 +294,13 @@
 - (void)combineViews
 {
 	// add search bar/groups to leftview
-    [leftView addSubview:searchField];
+    	[leftView addSubview:searchField];
 	[leftView addSubview:groupScrollView];
 	
 	// add scrollView/webView to right side of page
 	[scrollParentView addSubview:scrollView];
 	[horizontalSplitter addSubview:scrollParentView];
-	[horizontalSplitter addSubview:webView];
+	//[horizontalSplitter addSubview:webView];
 	
 	// add horizontal view into right view in order to split top/bottom
 	[rightView addSubview:horizontalSplitter];
